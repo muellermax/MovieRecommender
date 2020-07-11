@@ -12,14 +12,34 @@ class Recommender:
     """
     def __init__(self, ):
         """
-        Initizalize Recommender
+        Initizalizes Recommender, no necessary args.
         """
 
 
     def fit(self, movies_path, reviews_path, latent_features = 15, learning_rate = 0.001, iters = 50):
         """
-        fit the recommender to your dataset and also have this save the results
-        to pull from when you need to make predictions
+        Fits recommender to dataset, using the FunkSVD and knowledge-based approach.
+
+        Args:
+            movies_path: Path of CSV file with movies data with necessary columns 'movie', 'rating', 'date'
+            reviews_path: Path of CSV file with reviews (ratings) data with necessary columns 'user_id', 'movie_id',
+            'rating', 'timestamp'
+            latent_features: Number of latent features (for FunkSVD) to be considered
+            learning_rate: Learning rate for FunkSVD
+            iters: Iterations of FunkSVD to find best user_mat and movies_mat
+
+        Returns:
+            None - stores the following attributes
+            n_users - the number of users (int)
+            n_movies - the number of movies (int)
+            num_ratings - the number of ratings made (int)
+            reviews - DataFrame with four columns: 'user_id', 'movie_id', 'rating', 'timestamp'
+            movies - DataFrame of movies
+            user_item_mat - (np array) a user by item numpy array with ratings and nans for values
+            user_mat - Matrix with number of users (rows) and latent features (columns)
+            movies_mat - Matrix with number of movies (columns) and latent features (rows)
+            ranked_movies - DataFrame with with movies that are sorted by highest avg rating, more reviews,
+            then time, and must have more than 4 ratings
         """
 
         # Read in the data
@@ -78,20 +98,43 @@ class Recommender:
         self.user_mat = user_mat
         self.movie_mat = movie_mat
 
-        # Content-based approach:
+        # Knowledge-based approach:
         self.ranked_movies = rf.create_ranked_df(self.movies, self.reviews)
 
 
-    def predict_rating(self, ):
+    def predict_rating(self, user_id, movie_id):
         """
         makes predictions of a rating for a user on a movie-user combo
         """
+
+        if user_id in self.train_data_df.index:
+
+            # Use the training data to create a series of users and movies that matches the ordering in training data
+            user_ids_series = np.array(self.train_data_df.index)
+            movie_ids_series = np.array(self.train_data_df.columns)
+            movie_name = self.movies[self.movies.movie_id == movie_id]['movies'][0]
+
+            # User row and Movie Column
+            user_row = np.where(user_ids_series == user_id)[0][0]
+            movie_col = np.where(movie_ids_series == movie_id)[0][0]
+
+            # Take dot product of that row and column in U and V to make prediction
+            pred = np.dot(self.user_mat[user_row, :], self.movie_mat[:, movie_col])
+
+            print('The predicted rating for user {} and the movie {} is {}'.format(user_id, movie_name, round(pred, 2)))
+
+        else:
+            print('Looks like for this user-movie pair no prediction could be made, because the user and/or the '
+                  'movie are in the user-movie-matrix.')
+
 
     def make_recs(self,):
         """
         given a user id or a movie that an individual likes
         make recommendations
         """
+
+        
 
 
 if __name__ == '__main__':
