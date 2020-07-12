@@ -7,7 +7,6 @@ class Recommender:
     """
     Class to provide movie recommendations based on FunkSVD, content-based and knowledge based recommendation.
     FunkSVD works with Matrix Factorization and uses latent features.
-    Content-based recommendation recommends the movies, that are similar to those the user rated high before.
     Knowledge-based recommendation recommends the highest rated movies.
     """
     def __init__(self, ):
@@ -46,7 +45,7 @@ class Recommender:
         self.movies = pd.read_csv(movies_path)
         self.reviews = pd.read_csv(reviews_path)
 
-        # Create user-by-item matrix - nothing to do here
+        # Create user-by-item matrix
         train_user_item = self.reviews[['user_id', 'movie_id', 'rating', 'timestamp']]
         self.train_data_df = train_user_item.groupby(['user_id', 'movie_id'])['rating'].max().unstack()
         self.train_data_np = np.array(self.train_data_df)
@@ -56,8 +55,13 @@ class Recommender:
         self.n_movies = self.train_data_np.shape[1]
         self.num_ratings = np.count_nonzero(~np.isnan(self.train_data_np))
 
+        # Store more inputs
+        self.latent_features = latent_features
+        self.learning_rate = learning_rate
+        self.iters = iters
+
         # initialize the user and movie matrices with random values
-        user_mat = np.random.rand(self.users, self.latent_features)
+        user_mat = np.random.rand(self.n_users, self.latent_features)
         movie_mat = np.random.rand(self.latent_features, self.n_movies)
 
         # initialize sse at 0 for first iteration
@@ -112,7 +116,7 @@ class Recommender:
             # Use the training data to create a series of users and movies that matches the ordering in training data
             user_ids_series = np.array(self.train_data_df.index)
             movie_ids_series = np.array(self.train_data_df.columns)
-            movie_name = self.movies[self.movies.movie_id == movie_id]['movies'][0]
+            #movie_name = self.movies[self.movies.movie_id == movie_id]['movie'][0]
 
             # User row and Movie Column
             user_row = np.where(user_ids_series == user_id)[0][0]
@@ -121,21 +125,89 @@ class Recommender:
             # Take dot product of that row and column in U and V to make prediction
             pred = np.dot(self.user_mat[user_row, :], self.movie_mat[:, movie_col])
 
-            print('The predicted rating for user {} and the movie {} is {}'.format(user_id, movie_name, round(pred, 2)))
+            print('The predicted rating for user {} and the movie {} is {}'.format(user_id, movie_id, round(pred, 2)))
 
         else:
             print('Looks like for this user-movie pair no prediction could be made, because the user and/or the '
                   'movie are in the user-movie-matrix.')
 
 
-    def make_recs(self,):
+    def make_recs(self, _id, _id_type='movie', rec_num=5):
         """
         given a user id or a movie that an individual likes
         make recommendations
+
+        INPUT:
+        _id - either a user or movie id (int)
+        _id_type - "movie" or "user" (str)
+        rec_num - number of recommendations to return (int)
+
+        OUTPUT:
+        rec_ids - (array) a list or numpy array of recommended movies by id
+        rec_names - (array) a list or numpy array of recommended movies by name
         """
 
-        
+        # if the user is available from the matrix factorization data,
+        # I will use this and rank movies based on the predicted values
+        # For use with user indexing
 
+        val_users = self.train_data_df.index
+        rec_ids, rec_names = None, None
+
+        if _id_type == 'user':
+            if _id in self.train_data_df.index:
+
+                # Get the index of which row the user is in for use in U matrix
+                idx = np.where(val_users == _id)[0][0]
+
+                # take the dot product of that row and the V matrix
+                preds = np.dot(self.user_mat[idx, :], self.movie_mat)
+
+                # pull the top movies according to the prediction
+                indices = preds.argsort()[-rec_num:][::-1]  # indices
+                rec_ids = self.train_data_df.columns[indices]
+                rec_names = rf.get_movie_names(rec_ids, self.movies)
+
+            else:
+                # if we don't have this user, give just top ratings back
+                rec_names = rf.popular_recommendations(_id, rec_num, self.ranked_movies)
+                print("Because this user wasn't in our database, we are giving back the top movie "
+                      "recommendations for all users.")
+
+        # Find similar movies if it is a movie that is passed
+        else:
+            if _id in self.train_data_df.columns:
+                rec_names = list(rf.find_similar_movies(_id, self.movies))[:rec_num]
+            else:
+                print("That movie doesn't exist in our database.  Sorry, we don't have any recommendations for you.")
+
+        return rec_ids, rec_names
 
 if __name__ == '__main__':
     # test different parts to make sure it works
+    # import recommender as r
+
+    # instantiate recommender
+    rec = Recommender()
+
+    # fit recommender
+    rec.fit(reviews_path='train_data.csv', movies_path='movies_clean.csv', learning_rate=.01, iters=1)
+
+    # predict
+    rec.predict_rating(user_id=8, movie_id=2844)
+
+    # make recommendations
+    print('---')
+    print(rec.make_recs(8, 'user'))  # user in the dataset
+    print('---')
+    print(rec.make_recs(1, 'user'))  # user not in dataset
+    print('---')
+    print(rec.make_recs(1853728))  # movie in the dataset
+    print('---')
+    print(rec.make_recs(1))  # movie not in dataset
+    print('---')
+    print(rec.n_users)
+    print('---')
+    print(rec.n_movies)
+    print('---')
+    print(rec.num_ratings)
